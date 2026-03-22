@@ -28,7 +28,7 @@ from forearm_meshnet.data import (
 )
 from forearm_meshnet.models import ForearmMeshNet
 from forearm_meshnet.training import Trainer
-from forearm_meshnet.inference import Predictor, InferencePipeline
+from forearm_meshnet.inference import Predictor
 
 
 class ForearmMeshNetComplete:

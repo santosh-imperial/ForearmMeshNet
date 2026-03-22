@@ -3,13 +3,15 @@
 Utility functions for mesh operations
 """
 
+import logging
+from typing import Any, Dict, Optional, Tuple
+
 import numpy as np
-import trimesh
-from typing import Tuple, Optional, Dict, Any
-import numpy as np
-import trimesh
 import open3d as o3d
+import trimesh
 from scipy.spatial import cKDTree
+
+logger = logging.getLogger(__name__)
 
 def boundary_vertex_indices(mesh: trimesh.Trimesh) -> np.ndarray:
     edges = mesh.edges_sorted.reshape(-1, 2)
@@ -250,7 +252,7 @@ def smooth_mesh(mesh: trimesh.Trimesh,
     return mesh
 
 def remove_spurious_triangles(mesh: trimesh.Trimesh, max_edge_length_mm: float = 20.0, max_face_area_mm2: float = 100.0) -> trimesh.Trimesh:
-    print("Removing spurious triangles...")
+    logger.info("Removing spurious triangles...")
     faces = mesh.faces
     verts = mesh.vertices
 
@@ -269,7 +271,7 @@ def remove_spurious_triangles(mesh: trimesh.Trimesh, max_edge_length_mm: float =
 
     good_faces_mask = (face_edge_lengths <= max_edge_length_mm) & (face_areas <= max_face_area_mm2)
     num_bad_faces = (~good_faces_mask).sum()
-    print(f"   Removing {num_bad_faces} faces out of {len(faces)}")
+    logger.info(f"   Removing {num_bad_faces} faces out of {len(faces)}")
 
     mesh = mesh.copy()
     mesh.update_faces(good_faces_mask)
@@ -277,10 +279,10 @@ def remove_spurious_triangles(mesh: trimesh.Trimesh, max_edge_length_mm: float =
     return mesh
 
 def detect_isolated_components(mesh: trimesh.Trimesh, min_volume_ratio: float = 0.01) -> trimesh.Trimesh:
-    print("Detecting isolated components...")
+    logger.info("Detecting isolated components...")
     components = mesh.split(only_watertight=False)
     if len(components) <= 1:
-        print("   Single component, no removal needed")
+        logger.info("   Single component, no removal needed")
         return mesh
 
     sizes = []
@@ -297,7 +299,7 @@ def detect_isolated_components(mesh: trimesh.Trimesh, min_volume_ratio: float = 
             kept.append(comp)
 
     if len(kept) == 0:
-        print("   Warning: All components removed, returning original")
+        logger.warning("   All components removed, returning original")
         return mesh
     if len(kept) == 1:
         return kept[0]

@@ -5,25 +5,27 @@
 Main training class for ForearmMeshNet
 """
 
+import json
+import logging
+import pickle
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
-from pathlib import Path
-import json
-import pickle
-from typing import Dict, Optional, Any, List, Tuple
 from tqdm import tqdm
-import numpy as np
-from collections import defaultdict
-import matplotlib.pyplot as plt
 
 from ..models import ForearmMeshNet, CombinedLoss
 from ..data import ForearmDataset, ForearmDataLoader
 from .curriculum import CurriculumManager
 from .metrics import MeshEvaluationMetrics
 
-from collections import defaultdict
-import torch.nn.functional as F
+logger = logging.getLogger(__name__)
 
 
 def _build_edges_from_faces(faces_np):
@@ -169,10 +171,10 @@ class Trainer:
         tpl_pkl = self.config.get('unified_template_pickle', None)
         if tpl_pkl is not None:
             self.template_assets = _load_unified_template_assets_local(tpl_pkl)
-            print(f"Loaded template assets from {tpl_pkl} (structures: {list(self.template_assets.keys())})")
+            logger.info(f"Loaded template assets from {tpl_pkl} (structures: {list(self.template_assets.keys())})")
         else:
             self.template_assets = None
-            print("WARNING: 'unified_template_pickle' not provided; geometric losses will use dummy assets.")
+            logger.warning("'unified_template_pickle' not provided; geometric losses will use dummy assets.")
         
         # Data loaders
         self.train_loader = ForearmDataLoader(
@@ -234,12 +236,12 @@ class Trainer:
         self.training_history = defaultdict(list)
         self.best_model_path = None
         
-        print(f"\nTrainer initialized")
-        print(f"  Device: {self.device}")
-        print(f"  Training samples: {len(train_dataset)}")
-        print(f"  Validation samples: {len(val_dataset)}")
-        print(f"  Batch size: {config.get('batch_size', 8)}")
-        print(f"  Output directory: {self.output_dir}")
+        logger.info("Trainer initialized")
+        logger.info(f"  Device: {self.device}")
+        logger.info(f"  Training samples: {len(train_dataset)}")
+        logger.info(f"  Validation samples: {len(val_dataset)}")
+        logger.info(f"  Batch size: {config.get('batch_size', 8)}")
+        logger.info(f"  Output directory: {self.output_dir}")
     
     def _setup_optimizer(self) -> optim.Optimizer:
         """Setup optimizer."""
@@ -305,12 +307,9 @@ class Trainer:
         Returns:
             Training history dictionary
         """
-        print(f"\n{'='*60}")
-        print(f"TRAINING FOREARM MESHNET")
-        print(f"{'='*60}")
-        print(f"Epochs: {num_epochs}")
-        print(f"Device: {self.device}")
-        print(f"{'='*60}\n")
+        logger.info("TRAINING FOREARM MESHNET")
+        logger.info(f"Epochs: {num_epochs}")
+        logger.info(f"Device: {self.device}")
         
         # Training phases for curriculum learning
         phases = self._get_training_phases(num_epochs)
@@ -323,10 +322,8 @@ class Trainer:
             current_phase = self._get_current_phase(epoch, phases)
             if current_phase != phases[current_phase_idx]:
                 current_phase_idx += 1
-                print(f"\n{'='*50}")
-                print(f"PHASE: {current_phase['name']}")
-                print(f"Description: {current_phase['description']}")
-                print(f"{'='*50}\n")
+                logger.info(f"PHASE: {current_phase['name']}")
+                logger.info(f"Description: {current_phase['description']}")
             
             # Update curriculum
             self.curriculum_manager.update_epoch(epoch)
@@ -356,20 +353,19 @@ class Trainer:
             
             # Early stopping
             if self._check_early_stopping(epoch, val_losses['total']):
-                print("\nEarly stopping triggered!")
+                logger.info("Early stopping triggered!")
                 break
         
         # Save final model
+        epoch = getattr(self, 'current_epoch', num_epochs - 1)
         self._save_checkpoint(epoch, is_best=False, is_final=True)
         
         # Save training summary
         self._save_training_summary()
         
-        print(f"\n{'='*60}")
-        print(f"TRAINING COMPLETE")
-        print(f"Best validation loss: {self.best_val_loss:.4f}")
-        print(f"Results saved to: {self.output_dir}")
-        print(f"{'='*60}\n")
+        logger.info("TRAINING COMPLETE")
+        logger.info(f"Best validation loss: {self.best_val_loss:.4f}")
+        logger.info(f"Results saved to: {self.output_dir}")
         
         return dict(self.training_history)
     
@@ -584,11 +580,11 @@ class Trainer:
                   phase: Dict):
         """Log epoch results."""
         # Console logging
-        print(f"\nEpoch {epoch} - Phase: {phase['name']}")
-        print(f"  Train Loss: {train_losses['total']:.4f}")
-        print(f"  Val Loss: {val_losses['total']:.4f}")
-        print(f"  Best Val Loss: {self.best_val_loss:.4f}")
-        print(f"  LR: {self.optimizer.param_groups[0]['lr']:.6f}")
+        logger.info(f"Epoch {epoch} - Phase: {phase['name']}")
+        logger.info(f"  Train Loss: {train_losses['total']:.4f}")
+        logger.info(f"  Val Loss: {val_losses['total']:.4f}")
+        logger.info(f"  Best Val Loss: {self.best_val_loss:.4f}")
+        logger.info(f"  LR: {self.optimizer.param_groups[0]['lr']:.6f}")
         
         """ # TensorBoard logging
         for key, value in train_losses.items():
@@ -633,7 +629,7 @@ class Trainer:
             path = self.checkpoint_dir / f'checkpoint_epoch_{epoch}.pt'
         
         torch.save(checkpoint, path)
-        print(f"  Checkpoint saved to {path}")
+        logger.info(f"  Checkpoint saved to {path}")
     
     def _check_early_stopping(self,
                              epoch: int,
@@ -745,6 +741,6 @@ class Trainer:
         self.best_val_loss = checkpoint.get('best_val_loss', float('inf'))
         self.training_history = defaultdict(list, checkpoint.get('training_history', {}))
         
-        print(f"Checkpoint loaded from {checkpoint_path}")
-        print(f"  Epoch: {self.current_epoch}")
-        print(f"  Best val loss: {self.best_val_loss:.4f}")
+        logger.info(f"Checkpoint loaded from {checkpoint_path}")
+        logger.info(f"  Epoch: {self.current_epoch}")
+        logger.info(f"  Best val loss: {self.best_val_loss:.4f}")

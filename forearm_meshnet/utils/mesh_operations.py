@@ -58,7 +58,7 @@ def _umeyama_similarity(A: np.ndarray, B: np.ndarray) -> Tuple[np.ndarray, np.nd
 
     R = U @ S @ Vt
     varA = (Ac ** 2).sum() / A.shape[0]
-    s = (D @ np.diag(S)).trace() / max(varA, 1e-12)
+    s = float(D @ np.diag(S)) / max(varA, 1e-12)
     t = muB - s * (R @ muA)
     return R, t, float(s)
 
@@ -189,3 +189,8 @@ def similarity_icp(
         prev_err = mse
 
     return R_tot, t_tot, float(s_tot)
+
+
+# Public aliases for the closed-form alignment helpers
+kabsch_align = _kabsch_rigid
+umeyama_align = _umeyama_similarity

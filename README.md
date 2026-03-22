@@ -266,6 +266,16 @@ predictor.save_prediction(result, "./forearm_meshnet_output/inference/test_predi
 
 ## Configuration
 
+`DEFAULT_CONFIG` is the canonical set of pipeline defaults, covering preprocessing, model architecture, and training. Import it directly as a starting point:
+
+```python
+from forearm_meshnet.config import DEFAULT_CONFIG
+
+config = DEFAULT_CONFIG.copy()
+config['training']['num_epochs'] = 300
+config['model']['latent_dim'] = 512
+```
+
 Key knobs you may want to tweak:
 
 * **Preprocessing**

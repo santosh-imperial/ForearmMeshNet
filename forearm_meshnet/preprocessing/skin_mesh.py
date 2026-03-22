@@ -3,14 +3,19 @@
 Skin mesh generation module for ForearmMeshNet
 """
 
-import numpy as np
-import trimesh
-import scipy.ndimage as ndi
-from skimage import measure, morphology
-from typing import Optional, Tuple, Dict, Any
+import logging
 import warnings
+from typing import Any, Dict, Optional, Tuple
+
+import numpy as np
 import pymeshfix
-from .mesh_utils import cap_then_polish, remove_spurious_triangles, detect_isolated_components
+import scipy.ndimage as ndi
+import trimesh
+from skimage import measure, morphology
+
+from .mesh_utils import cap_then_polish, detect_isolated_components, remove_spurious_triangles
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -54,9 +59,7 @@ class SkinMeshGenerator:
         Returns:
             mesh: Generated skin mesh
         """
-        print("\n" + "="*50)
-        print("SKIN MESH GENERATION")
-        print("="*50)
+        logger.info("SKIN MESH GENERATION")
         
         # Step 1: Isotropic resampling
         vol_iso, mask_iso, sp_iso = self._resample_isotropic(
@@ -82,11 +85,10 @@ class SkinMeshGenerator:
         # Save if requested
         if output_path:
             mesh_processed.export(output_path)
-            print(f"\nMesh saved to: {output_path}")
+            logger.info(f"Mesh saved to: {output_path}")
         
         return mesh_processed
-    class SkinMeshGenerator:
-   
+
     def generate_robust(
         self,
         skin_mask: np.ndarray,
@@ -98,15 +100,13 @@ class SkinMeshGenerator:
         """
         Robust skin mesh generation in case of too many artefacts.
         """
-        print("\n" + "="*50)
-        print("SKIN MESH GENERATION (ROBUST)")
-        print("="*50)
+        logger.info("SKIN MESH GENERATION (ROBUST)")
 
         # 1) Isotropic resampling (same as enhanced)
         vol_iso, mask_iso, sp_iso = self._resample_isotropic(vol, skin_mask, spacing)
 
         # 2) Robust SDF: pre-smooth mask, keep largest component, then EDT
-        print("\n2. Creating robust signed distance field...")
+        logger.info("2. Creating robust signed distance field...")
         smooth_mask = ndi.gaussian_filter(mask_iso.astype(np.float32), sigma=1.0) > 0.5
 
         labeled, n_comp = ndi.label(smooth_mask)
@@ -114,16 +114,16 @@ class SkinMeshGenerator:
             sizes = np.bincount(labeled.ravel())[1:]
             largest = np.argmax(sizes) + 1
             smooth_mask = (labeled == largest)
-            print(f"   Using largest component out of {n_comp}")
+            logger.info(f"   Using largest component out of {n_comp}")
 
         d_out = ndi.distance_transform_edt(~smooth_mask) * sp_iso[0]
         d_in  = ndi.distance_transform_edt(smooth_mask)  * sp_iso[0]
         sdist = d_out - d_in
         sdist = ndi.gaussian_filter(sdist, sigma=self.sdf_blur_sigma)
-        print(f"   SDF range: [{sdist.min():.2f}, {sdist.max():.2f}] mm")
+        logger.info(f"   SDF range: [{sdist.min():.2f}, {sdist.max():.2f}] mm")
 
         # 3) Robust marching cubes
-        print("\n3. Extracting mesh with robust marching cubes...")
+        logger.info("3. Extracting mesh with robust marching cubes...")
         try:
             verts, faces, normals, values = measure.marching_cubes(
                 sdist,
@@ -134,7 +134,7 @@ class SkinMeshGenerator:
                 allow_degenerate=False
             )
             initial_mesh = trimesh.Trimesh(verts, faces, process=False)
-            print(f"   Initial mesh: {len(initial_mesh.vertices):,} v, {len(initial_mesh.faces):,} f")
+            logger.info(f"   Initial mesh: {len(initial_mesh.vertices):,} v, {len(initial_mesh.faces):,} f")
 
             # Initial cleanup
             initial_mesh.remove_duplicate_faces()
@@ -143,7 +143,7 @@ class SkinMeshGenerator:
 
             # 4) Conservative MeshFix ONLY if not watertight
             if not initial_mesh.is_watertight:
-                print("4. Mesh not watertight, applying conservative PyMeshFix...")
+                logger.info("4. Mesh not watertight, applying conservative PyMeshFix...")
                 try:
                     mfix = pymeshfix.MeshFix(initial_mesh.vertices, initial_mesh.faces)
                     mfix.repair(
@@ -155,20 +155,20 @@ class SkinMeshGenerator:
 
                     # If face count explodes (>1.5×), keep original
                     if len(repaired_mesh.faces) > len(initial_mesh.faces) * 1.5:
-                        print("   Repair added too many faces, keeping original mesh")
+                        logger.info("   Repair added too many faces, keeping original mesh")
                         mesh = initial_mesh
                     else:
                         mesh = repaired_mesh
                 except Exception as e:
-                    print(f"   Mesh repair failed: {e}, using original mesh")
+                    logger.warning(f"   Mesh repair failed: {e}, using original mesh")
                     mesh = initial_mesh
             else:
-                print("4. Mesh already watertight")
+                logger.info("4. Mesh already watertight")
                 mesh = initial_mesh
 
             # 5) Final artifact cleanup
             if artifact_removal:
-                print("5. Final artifact cleanup...")
+                logger.info("5. Final artifact cleanup...")
                 mesh = remove_spurious_triangles(
                     mesh,
                     max_edge_length_mm=self.max_edge_length * 0.8,
@@ -181,17 +181,17 @@ class SkinMeshGenerator:
             mesh.remove_unreferenced_vertices()
             mesh.remove_degenerate_faces()
 
-            print(f"   Final robust mesh: {len(mesh.vertices):,} v, {len(mesh.faces):,} f")
-            print(f"   Watertight: {mesh.is_watertight}")
+            logger.info(f"   Final robust mesh: {len(mesh.vertices):,} v, {len(mesh.faces):,} f")
+            logger.info(f"   Watertight: {mesh.is_watertight}")
 
             if output_path:
                 mesh.export(output_path)
-                print(f"\nMesh saved to: {output_path}")
+                logger.info(f"Mesh saved to: {output_path}")
 
             return mesh
 
         except Exception as e:
-            print(f"ERROR in robust mesh generation: {e}")
+            logger.warning(f"ERROR in robust mesh generation: {e}")
             raise
     
     def _resample_isotropic(self,
@@ -201,7 +201,7 @@ class SkinMeshGenerator:
         """
         Resample volume and mask to isotropic voxels.
         """
-        print(f"\n1. Resampling to isotropic voxels ({self.iso_resolution}mm)...")
+        logger.info(f"1. Resampling to isotropic voxels ({self.iso_resolution}mm)...")
         
         iso = float(self.iso_resolution)
         zoom = spacing / iso  # axis-wise zoom factors (Z, Y, X)
@@ -215,8 +215,8 @@ class SkinMeshGenerator:
 
         sp_iso = np.array([iso, iso, iso], dtype=np.float32)  # ZYX
 
-        print(f"  Original shape: {vol.shape} at {spacing}mm")
-        print(f"  Isotropic shape: {vol_iso.shape} at {sp_iso}mm")
+        logger.info(f"  Original shape: {vol.shape} at {spacing}mm")
+        logger.info(f"  Isotropic shape: {vol_iso.shape} at {sp_iso}mm")
         return vol_iso, mask_iso, sp_iso
     
 
@@ -226,7 +226,7 @@ class SkinMeshGenerator:
         """
         Create signed distance field from binary mask.
         """
-        print("\n2. Creating signed distance field...")
+        logger.info("2. Creating signed distance field...")
         
         # Ensure single connected component
         labeled, n_components = ndi.label(mask)
@@ -234,7 +234,7 @@ class SkinMeshGenerator:
             sizes = np.bincount(labeled.ravel())[1:]
             largest = np.argmax(sizes) + 1
             mask = (labeled == largest)
-            print(f"  Using largest component ({n_components} components found)")
+            logger.info(f"  Using largest component ({n_components} components found)")
         
         # Compute distance transforms
         d_out = ndi.distance_transform_edt(~mask) * spacing[0]
@@ -246,7 +246,7 @@ class SkinMeshGenerator:
         # Smooth SDF to prevent artifacts
         sdist = ndi.gaussian_filter(sdist, sigma=self.sdf_blur_sigma)
         
-        print(f"  SDF range: [{sdist.min():.2f}, {sdist.max():.2f}] mm")
+        logger.info(f"  SDF range: [{sdist.min():.2f}, {sdist.max():.2f}] mm")
         
         return sdist
     
@@ -256,7 +256,7 @@ class SkinMeshGenerator:
         """
         Extract mesh using marching cubes.
         """
-        print("\n3. Extracting mesh with marching cubes...")
+        logger.info("3. Extracting mesh with marching cubes...")
         
         try:
             # Extract mesh at zero level set
@@ -267,7 +267,7 @@ class SkinMeshGenerator:
             # Create trimesh object
             mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
             
-            print(f"  Initial mesh: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
+            logger.info(f"  Initial mesh: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
             
             # Remove artifacts
             mesh = self._remove_artifacts(mesh)
@@ -275,14 +275,14 @@ class SkinMeshGenerator:
             return mesh
             
         except Exception as e:
-            print(f"  ERROR in mesh extraction: {e}")
+            logger.warning(f"  ERROR in mesh extraction: {e}")
             return None
     
     def _remove_artifacts(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
         Remove mesh artifacts (spurious triangles, isolated components).
         """
-        print("  Removing artifacts...")
+        logger.info("  Removing artifacts...")
         
         # Remove spurious triangles
         edges = mesh.edges_unique
@@ -313,9 +313,9 @@ class SkinMeshGenerator:
             # Keep largest component
             largest = max(components, key=lambda c: len(c.vertices))
             mesh = largest
-            print(f"    Removed {len(components)-1} isolated components")
+            logger.info(f"    Removed {len(components)-1} isolated components")
         
-        print(f"    After cleanup: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
+        logger.info(f"    After cleanup: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
         
         return mesh
     
@@ -323,7 +323,7 @@ class SkinMeshGenerator:
         """
         Process mesh with smoothing, decimation, and repair.
         """
-        print("\n4. Processing mesh...")
+        logger.info("4. Processing mesh...")
         
         # Step 1: Repair with pymeshfix
         mesh = self._repair_mesh(mesh)
@@ -336,7 +336,7 @@ class SkinMeshGenerator:
         mesh.remove_unreferenced_vertices()
         mesh.remove_degenerate_faces()
         
-        print(f"  Final mesh: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
+        logger.info(f"  Final mesh: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces")
         
         return mesh
     
@@ -344,7 +344,7 @@ class SkinMeshGenerator:
         """
         Repair mesh using pymeshfix.
         """
-        print("  Repairing mesh...")
+        logger.info("  Repairing mesh...")
         
         try:
             mfix = pymeshfix.MeshFix(mesh.vertices, mesh.faces)
@@ -364,22 +364,22 @@ class SkinMeshGenerator:
             mesh_repaired.update_faces(mesh_repaired.unique_faces())
             mesh_repaired.remove_unreferenced_vertices()
             
-            print(f"    Repaired: watertight={mesh_repaired.is_watertight}")
+            logger.info(f"    Repaired: watertight={mesh_repaired.is_watertight}")
 
             return mesh_repaired
             
         except Exception as e:
-            print(f"    WARNING: Repair failed: {e}")
+            logger.warning(f"    Repair failed: {e}")
             return mesh
-    
+
     def _decimate_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
         Decimate mesh to target face count.
         """
-        print(f"  Decimating to {self.target_faces:,} faces...")
+        logger.info(f"  Decimating to {self.target_faces:,} faces...")
         
         if len(mesh.faces) <= self.target_faces:
-            print(f"    Mesh already has {len(mesh.faces):,} faces, skipping decimation")
+            logger.info(f"    Mesh already has {len(mesh.faces):,} faces, skipping decimation")
             return mesh
         
         try:
@@ -403,21 +403,21 @@ class SkinMeshGenerator:
                 process=False
             )
             
-            print(f"    Decimated: {len(mesh.faces):,} → {len(mesh_decimated.faces):,} faces")
+            logger.info(f"    Decimated: {len(mesh.faces):,} → {len(mesh_decimated.faces):,} faces")
             return mesh_decimated
             
         except ImportError:
-            print("    WARNING: fast_simplification not available, using basic decimation")
+            logger.warning("    fast_simplification not available, using basic decimation")
             return mesh.simplify_quadric_decimation(self.target_faces)
         except Exception as e:
-            print(f"    WARNING: Decimation failed: {e}")
+            logger.warning(f"    Decimation failed: {e}")
             return mesh
     
     def _smooth_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         """
         Apply Taubin smoothing to mesh.
         """
-        print(f"  Smoothing ({self.smooth_iterations} iterations)...")
+        logger.info(f"  Smoothing ({self.smooth_iterations} iterations)...")
         
         # Taubin smoothing parameters
         lambda_factor = 0.5
@@ -452,7 +452,7 @@ class SkinMeshGenerator:
             vertices = vertices_new
             
             if (iteration + 1) % 10 == 0:
-                print(f"    Iteration {iteration + 1}/{self.smooth_iterations}")
+                logger.info(f"    Iteration {iteration + 1}/{self.smooth_iterations}")
         
         mesh_smooth = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
         
@@ -462,7 +462,7 @@ class SkinMeshGenerator:
         """
         Validate mesh quality metrics.
         """
-        print("\n5. Validating mesh quality...")
+        logger.info("5. Validating mesh quality...")
         
         quality = {
             'is_watertight': mesh.is_watertight,
@@ -503,26 +503,24 @@ class SkinMeshGenerator:
         """
         Print mesh quality report.
         """
-        print("\nMESH QUALITY REPORT")
-        print("="*50)
-        print(f"Watertight: {quality['is_watertight']}")
-        print(f"Manifold: {quality['is_manifold']}")
-        print(f"Valid: {quality['is_valid']}")
-        print(f"Vertices: {quality['vertex_count']:,}")
-        print(f"Faces: {quality['face_count']:,}")
-        print(f"Surface area: {quality['surface_area']:.2f} mm²")
+        logger.info("MESH QUALITY REPORT")
+        logger.info(f"Watertight: {quality['is_watertight']}")
+        logger.info(f"Manifold: {quality['is_manifold']}")
+        logger.info(f"Valid: {quality['is_valid']}")
+        logger.info(f"Vertices: {quality['vertex_count']:,}")
+        logger.info(f"Faces: {quality['face_count']:,}")
+        logger.info(f"Surface area: {quality['surface_area']:.2f} mm²")
         if quality['volume'] is not None:
-            print(f"Volume: {quality['volume']:.2f} mm³")
-        print(f"\nEdge lengths (mm):")
-        print(f"  Min: {quality['edge_stats']['min']:.2f}")
-        print(f"  Max: {quality['edge_stats']['max']:.2f}")
-        print(f"  Mean: {quality['edge_stats']['mean']:.2f}")
-        print(f"  Std: {quality['edge_stats']['std']:.2f}")
-        print(f"\nFace areas (mm²):")
-        print(f"  Min: {quality['face_area_stats']['min']:.2f}")
-        print(f"  Max: {quality['face_area_stats']['max']:.2f}")
-        print(f"  Mean: {quality['face_area_stats']['mean']:.2f}")
-        print(f"  Std: {quality['face_area_stats']['std']:.2f}")
-        print("="*50)
+            logger.info(f"Volume: {quality['volume']:.2f} mm³")
+        logger.info("Edge lengths (mm):")
+        logger.info(f"  Min: {quality['edge_stats']['min']:.2f}")
+        logger.info(f"  Max: {quality['edge_stats']['max']:.2f}")
+        logger.info(f"  Mean: {quality['edge_stats']['mean']:.2f}")
+        logger.info(f"  Std: {quality['edge_stats']['std']:.2f}")
+        logger.info("Face areas (mm²):")
+        logger.info(f"  Min: {quality['face_area_stats']['min']:.2f}")
+        logger.info(f"  Max: {quality['face_area_stats']['max']:.2f}")
+        logger.info(f"  Mean: {quality['face_area_stats']['mean']:.2f}")
+        logger.info(f"  Std: {quality['face_area_stats']['std']:.2f}")
 
 

@@ -4,15 +4,19 @@
 PyTorch Dataset class for ForearmMeshNet
 """
 
-import torch
-from torch.utils.data import Dataset, DataLoader
-from torch_geometric.data import Data, Batch
-import numpy as np
-import pickle
-from typing import Dict, List, Optional, Tuple, Any
-from pathlib import Path
 import copy
+import logging
+import pickle
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, Dataset
+from torch_geometric.data import Batch, Data
+
+logger = logging.getLogger(__name__)
 
 def _deep_clone_sample(sample: Dict[str, Any]) -> Dict[str, Any]:
     # shallow copy outer dict
@@ -76,8 +80,8 @@ class ForearmDataset(Dataset):
             self.structure_info = {}
             self.num_structures = 0
         
-        print(f"Dataset initialized with {len(samples)} samples")
-        print(f"Structures: {list(self.structure_info.keys())}")
+        logger.info(f"Dataset initialized with {len(samples)} samples")
+        logger.info(f"Structures: {list(self.structure_info.keys())}")
     
     def __len__(self) -> int:
         """Return the number of samples."""
@@ -180,7 +184,7 @@ class ForearmDataset(Dataset):
             all_names.update(s.get('structure_deformations', {}).keys())
         # Keep a stable order: put 'combined' first if present
         structure_names = ['combined'] + sorted(n for n in all_names if n != 'combined')
-        if not any(getattr(b.__class__, "include_combined", False) for b in [ForearmDataset]):  
+        if not any('combined' in s.get('structure_deformations', {}) for s in batch):
             structure_names = [n for n in structure_names if n != 'combined']
         batched_deformations, batched_masks = {}, {}
         vertex_masks = {}

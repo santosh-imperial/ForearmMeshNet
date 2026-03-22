@@ -3,13 +3,17 @@
 Anthropometric feature extraction module for ForearmMeshNet
 """
 
-import numpy as np
-import trimesh
-from typing import Dict, Optional, List, Tuple, Union, Sequence
-from scipy.spatial import ConvexHull
-from scipy.optimize import least_squares
+import logging
 import warnings
+from typing import Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 import torch
+import trimesh
+from scipy.optimize import least_squares
+from scipy.spatial import ConvexHull
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropometricExtractor:
@@ -70,7 +74,7 @@ class AnthropometricExtractor:
         Returns:
             Dictionary of anthropometric measurements
         """
-        print("Extracting anthropometric measurements...")
+        logger.info("Extracting anthropometric measurements...")
         
         vertices = mesh.vertices
         
@@ -125,9 +129,9 @@ class AnthropometricExtractor:
             anthropometric_data['surface_area'] = mesh.area
             anthropometric_data['volume'] = mesh.volume
         
-        print(f"  Forearm length: {forearm_length:.1f} mm")
-        print(f"  Circumferences: {[f'{c:.1f}' for c in circumferences]} mm")
-        print(f"  Taper ratio: {taper_ratio:.3f}")
+        logger.info(f"  Forearm length: {forearm_length:.1f} mm")
+        logger.info(f"  Circumferences: {[f'{c:.1f}' for c in circumferences]} mm")
+        logger.info(f"  Taper ratio: {taper_ratio:.3f}")
         
         return anthropometric_data
     

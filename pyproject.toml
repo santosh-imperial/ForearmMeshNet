@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forearmmeshnet"
+version = "0.1.0"
+description = "ForearmMeshNet pipeline for subject-specific forearm meshes"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Santosh Kumar Saravanan", email = "santoshkumar.saravanan@gmail.com" }
+]
+keywords = ["forearm", "mesh", "reconstruction", "VAE", "graph-neural-network", "medical-imaging"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+    "scikit-image>=0.22",
+    "trimesh>=4.0",
+    "scikit-learn",
+    "torch>=2.1",
+    "torch-geometric",
+    "pymeshfix>=0.16",
+    "matplotlib>=3.8",
+    "tqdm>=4.66",
+    "pyyaml>=6.0",
+    "rich>=13.7",
+    "nibabel>=5.0",
+    "meshio>=5.3",
+    "pandas>=2.0",
+    "open3d>=0.17",
+    "SimpleITK>=2.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/santosh-imperial/ForearmMeshNet"
+Repository = "https://github.com/santosh-imperial/ForearmMeshNet"
+Issues = "https://github.com/santosh-imperial/ForearmMeshNet/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+smplx = [
+    "smplx>=0.1.28",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

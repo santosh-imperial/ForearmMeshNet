@@ -3,17 +3,21 @@
 Inference pipeline for ForearmMeshNet
 """
 
-import torch
-import numpy as np
-import trimesh
+import json
+import logging
 import pickle
 from pathlib import Path
-from typing import Dict, Optional, List, Any, Tuple
-import json
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
+import trimesh
 
 from ..models import ForearmMeshNet
 from ..data import DataNormalizer
 from ..features import AnthropometricExtractor, GraphFeatureExtractor
+
+logger = logging.getLogger(__name__)
 
 
 class Predictor:
@@ -44,8 +48,8 @@ class Predictor:
         else:
             self.device = torch.device(device)
         
-        print(f"\nInitializing ForearmMeshNet Predictor")
-        print(f"  Device: {self.device}")
+        logger.info("Initializing ForearmMeshNet Predictor")
+        logger.info(f"  Device: {self.device}")
         
         # Load model
         self.model, self.config = self._load_model(model_checkpoint_path)
@@ -66,13 +70,13 @@ class Predictor:
         self.anthro_extractor = AnthropometricExtractor()
         self.graph_extractor = GraphFeatureExtractor()
         
-        print(f"\nPredictor ready for inference")
-        print(f"  Template vertices: {len(self.template_mesh.vertices)}")
-        print(f"  Structures: {len(self.structure_info)}")
+        logger.info("Predictor ready for inference")
+        logger.info(f"  Template vertices: {len(self.template_mesh.vertices)}")
+        logger.info(f"  Structures: {len(self.structure_info)}")
     
     def _load_model(self, checkpoint_path: str) -> Tuple[ForearmMeshNet, Dict]:
         """Load trained model from checkpoint."""
-        print(f"Loading model from: {checkpoint_path}")
+        logger.info(f"Loading model from: {checkpoint_path}")
         
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         config = checkpoint['config']
@@ -83,15 +87,15 @@ class Predictor:
         model.to(self.device)
         model.eval()
         
-        print(f"  Model loaded (epoch {checkpoint.get('epoch', 'unknown')})")
+        logger.info(f"  Model loaded (epoch {checkpoint.get('epoch', 'unknown')})")
         best_val = checkpoint.get('best_val_loss', None)
-        print(f"  Best val loss: {best_val:.4f}" if isinstance(best_val, (float, int)) else "  Best val loss: N/A") 
+        logger.info(f"  Best val loss: {best_val:.4f}" if isinstance(best_val, (float, int)) else "  Best val loss: N/A")
         
         return model, config
     
     def _load_template_system(self, template_path: str) -> Dict:
         """Load unified template system."""
-        print(f"Loading template from: {template_path}")
+        logger.info(f"Loading template from: {template_path}")
         
         path = Path(template_path)
         
@@ -135,7 +139,7 @@ class Predictor:
     
     def _load_normalizer(self, normalizer_path: str) -> Dict:
         """Load data normalizer."""
-        print(f"Loading normalizer from: {normalizer_path}")
+        logger.info(f"Loading normalizer from: {normalizer_path}")
         
         with open(normalizer_path, 'rb') as f:
             norm = pickle.load(f)
@@ -159,7 +163,7 @@ class Predictor:
         Returns:
             Dictionary containing predictions
         """
-        print(f"\nGenerating prediction...")
+        logger.info("Generating prediction...")
         
         # Prepare features
         features = self._prepare_features(anthropometric_measurements)
@@ -178,7 +182,7 @@ class Predictor:
         # Process predictions
         predictions = []
         for sample_idx, sample in enumerate(samples):
-            print(f"  Processing sample {sample_idx + 1}/{n_samples}")
+            logger.info(f"  Processing sample {sample_idx + 1}/{n_samples}")
             
             # Denormalize deformations
             denorm_deformations = self._denormalize_predictions(sample)
@@ -209,7 +213,7 @@ class Predictor:
             }
         }
         
-        print(f"Prediction complete!")
+        logger.info("Prediction complete!")
         
         return result
     
@@ -400,7 +404,7 @@ class Predictor:
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        print(f"Prediction saved to: {output_dir}")
+        logger.info(f"Prediction saved to: {output_dir}")
 
 
 class InferencePipeline:
@@ -449,13 +453,13 @@ class InferencePipeline:
         # Load measurements
         df = pd.read_csv(measurements_file)
         
-        print(f"\nProcessing {len(df)} subjects")
+        logger.info(f"Processing {len(df)} subjects")
         
         all_predictions = {}
         
         for idx, row in df.iterrows():
             subject_id = row.get('subject_id', f'subject_{idx}')
-            print(f"\nProcessing {subject_id}...")
+            logger.info(f"Processing {subject_id}...")
             
             # Convert row to measurements dict
             measurements = row.to_dict()
@@ -475,8 +479,8 @@ class InferencePipeline:
             
             all_predictions[subject_id] = prediction
         
-        print(f"\nBatch processing complete!")
-        print(f"Results saved to: {self.output_dir}")
+        logger.info("Batch processing complete!")
+        logger.info(f"Results saved to: {self.output_dir}")
         
         return all_predictions
     
@@ -487,21 +491,19 @@ class InferencePipeline:
         Returns:
             Prediction results
         """
-        print("\n" + "="*60)
-        print("INTERACTIVE FOREARM MESH PREDICTION")
-        print("="*60)
+        logger.info("INTERACTIVE FOREARM MESH PREDICTION")
         
         measurements = {}
         
         # Basic measurements
-        print("\nEnter anthropometric measurements (in mm):")
+        logger.info("Enter anthropometric measurements (in mm):")
         measurements['forearm_length'] = float(input("  Forearm length [250]: ") or 250)
         measurements['wrist_circumference'] = float(input("  Wrist circumference [170]: ") or 170)
         measurements['mid_forearm_circumference'] = float(input("  Mid-forearm circumference [210]: ") or 210)
         measurements['proximal_circumference'] = float(input("  Proximal circumference [240]: ") or 240)
         
         # Subject data
-        print("\nEnter subject information:")
+        logger.info("Enter subject information:")
         measurements['subject_height'] = float(input("  Height (cm) [175]: ") or 175)
         measurements['subject_weight'] = float(input("  Weight (kg) [70]: ") or 70)
         measurements['subject_age'] = int(input("  Age [30]: ") or 30)
@@ -516,7 +518,7 @@ class InferencePipeline:
         n_samples = int(input("\nNumber of samples to generate [1]: ") or 1)
         
         # Generate prediction
-        print("\nGenerating prediction...")
+        logger.info("Generating prediction...")
         prediction = self.predictor.predict(measurements, n_samples=n_samples)
         
         # Save results
@@ -525,7 +527,7 @@ class InferencePipeline:
         
         self.predictor.save_prediction(prediction, str(output_path))
         
-        print(f"\nPrediction complete!")
-        print(f"Results saved to: {output_path}")
+        logger.info("Prediction complete!")
+        logger.info(f"Results saved to: {output_path}")
         
         return prediction

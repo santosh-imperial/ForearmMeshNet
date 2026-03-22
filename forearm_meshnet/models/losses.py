@@ -268,9 +268,9 @@ class CombinedLoss(nn.Module):
         }
         
         # Update with config if provided
-        if 'lambda_weights' in config:
-            self.lambda_weights.update(config['lambda_weights'])
-        
+        if 'lambda_weights' in self.config:
+            self.lambda_weights.update(self.config['lambda_weights'])
+
         # Reconstruction sub-weights
         self.reconstruction_weights = {
             'mse': 0.55,
@@ -278,9 +278,9 @@ class CombinedLoss(nn.Module):
             'l1_mm': 0.15,
             'cos_dir': 0.05,
         }
-        
+
         # Structure-specific weights
-        self.structure_weights = config.get('structure_weights', {
+        self.structure_weights = self.config.get('structure_weights', {
             'skin': 1.0,  # Most important
             'FCR': 0.8,   # Clinically significant muscles
             'FCU': 0.8,
@@ -440,14 +440,18 @@ class CombinedLoss(nn.Module):
                 continue
             
             # Get vertices
+            device = pred[struct_name].device
             if affine_meshes and struct_name in affine_meshes:
-                template_verts = affine_meshes[struct_name]
+                template_verts = affine_meshes[struct_name].to(device)
             else:
-                template_verts = template_meshes[struct_name].get('vertices')
-            
+                tv = template_meshes[struct_name].get('vertices')
+                if tv is None:
+                    continue
+                template_verts = tv if torch.is_tensor(tv) else torch.tensor(tv, dtype=torch.float32, device=device)
+
             if template_verts is None:
                 continue
-            
+
             # Apply deformations
             pred_verts = template_verts + pred[struct_name]
             target_verts = template_verts + target[struct_name]
@@ -544,17 +548,16 @@ class CombinedLoss(nn.Module):
                 continue
             
             # Get vertices
+            device = pred[struct_name].device
             if affine_meshes and struct_name in affine_meshes:
                 template_verts = affine_meshes[struct_name].to(device)
             else:
                 tv = template_meshes[struct_name].get('vertices')
                 template_verts = tv if torch.is_tensor(tv) else torch.tensor(tv, dtype=torch.float32, device=device)
 
-            
+
             # Apply deformations
             deformed_verts = template_verts + pred[struct_name]
-
-            device = pred[struct_name].device
             laplacian = template_meshes[struct_name].get('laplacian')
             if laplacian is None:
                 continue
@@ -591,16 +594,20 @@ class CombinedLoss(nn.Module):
             
             if source_verts is None:
                 continue
-            
-            device = source_verts.device
+
+            device = pred[struct_name].device
             edges = self._as_long_on(edges, device)
             # Apply deformations
-            X = (affine_meshes[struct_name] if affine_meshes and struct_name in affine_meshes else template_meshes[struct_name]['vertices']).to(device)
+            if affine_meshes and struct_name in affine_meshes:
+                X = affine_meshes[struct_name].to(device)
+            else:
+                xv = template_meshes[struct_name]['vertices']
+                X = xv if torch.is_tensor(xv) else torch.tensor(xv, dtype=torch.float32, device=device)
             Y = X + pred[struct_name]
             edges = self._as_long_on(template_meshes[struct_name]['edges'], device)
             
             # Compute volume loss for each sample in batch
-            batch_size = source_verts.shape[0]
+            batch_size = X.shape[0]
             batch_loss = 0
             
             for b in range(batch_size):

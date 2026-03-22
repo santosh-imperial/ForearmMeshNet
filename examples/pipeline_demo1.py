@@ -5,6 +5,7 @@ This script demonstrates the complete workflow from raw MRI data
 to template generation and training data preparation.
 """
 
+import copy
 import numpy as np
 import trimesh
 from pathlib import Path
@@ -26,6 +27,7 @@ from forearm_meshnet.features import (
     AnthropometricExtractor,
     GraphFeatureExtractor
 )
+from forearm_meshnet.config import DEFAULT_CONFIG
 
 
 class ForearmMeshNetCompletePipeline:
@@ -40,7 +42,7 @@ class ForearmMeshNetCompletePipeline:
         Args:
             config: Configuration dictionary
         """
-        self.config = config or self._get_default_config()
+        self.config = config or copy.deepcopy(DEFAULT_CONFIG)
         
         # Initialize all components
         self.skin_mask_gen = SkinMaskGenerator(self.config['skin_mask'])
@@ -63,35 +65,6 @@ class ForearmMeshNetCompletePipeline:
         print("Muscle mesh generator")
         print("Template generators")
         print("Feature extractors")
-    
-    def _get_default_config(self) -> Dict:
-        """Get default configuration."""
-        return {
-            'skin_mask': {
-                'end_slice_fraction': 0.25,
-                'fix_ghosting': True,
-                'fix_connected_ghosting': True,
-                'max_connected_ghosting_fix': 14,
-            },
-            'skin_mesh': {
-                'iso_resolution': 0.5,
-                'sdf_blur_sigma': 1.5,
-                'target_faces': 50000,
-                'smooth_iterations': 50,
-                'max_edge_length': 15.0,
-            },
-            'muscle_mesh': {
-                'min_muscle_volume': 100,
-                'smooth_iterations': 15,
-                'target_vertices': 800,
-                'iso_resolution': 0.5,
-            },
-            'template': {
-                'skin_vertices': 5000,
-                'muscle_vertices': 500,
-                'min_muscle_availability': 0.8,
-            }
-        }
     
     def process_dataset(self,
                        data_root: str,

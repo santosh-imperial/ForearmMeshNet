@@ -82,7 +82,7 @@ class GraphFeatureExtractor:
             else:
                 mesh.vertex_normals  # Trigger computation
                 vertex_normals = mesh.vertex_normals
-        except:
+        except Exception:
             vertex_normals = np.zeros_like(vertices)
         
         # Combine features

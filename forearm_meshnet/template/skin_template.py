@@ -3,19 +3,24 @@
 Skin template generation module for ForearmMeshNet
 """
 
-import numpy as np
-import trimesh
-import torch
-from torch_geometric.data import Data
-from typing import Dict, Optional, Tuple, List
-from pathlib import Path
+import logging
 import pickle
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 import pymeshfix
+import torch
+import trimesh
+from torch_geometric.data import Data
+
 try:
     from smplx import SMPLX
     _SMPLX_AVAILABLE = True
 except Exception:
     _SMPLX_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 class SkinTemplateGenerator:
     """
@@ -44,14 +49,14 @@ class SkinTemplateGenerator:
         Returns:
             Template mesh
         """
-        print("Creating skin template from reference mesh...")
+        logger.info("Creating skin template from reference mesh...")
         
         # Center and normalize mesh
         template = self._normalize_mesh(mesh.copy())
         
         # Simplify if requested
         if target_vertices and len(template.vertices) > target_vertices:
-            print(f"  Simplifying from {len(template.vertices)} to {target_vertices} vertices...")
+            logger.info(f"  Simplifying from {len(template.vertices)} to {target_vertices} vertices...")
             template = template.simplify_quadric_decimation(target_vertices)
 
         template= self._clean_mesh_preserve_scale(template)
@@ -62,7 +67,7 @@ class SkinTemplateGenerator:
         # Create graph representation
         self.template_graph = self._create_graph_representation(template)
         
-        print(f"  Template created: {len(template.vertices)} vertices, {len(template.faces)} faces")
+        logger.info(f"  Template created: {len(template.vertices)} vertices, {len(template.faces)} faces")
         
         return template
     def _clean_mesh_preserve_scale(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -90,7 +95,7 @@ class SkinTemplateGenerator:
         Returns:
             Average template mesh
         """
-        print(f"Creating template from {len(mesh_list)} meshes...")
+        logger.info(f"Creating template from {len(mesh_list)} meshes...")
         
         if len(mesh_list) == 0:
             raise ValueError("No meshes provided")
@@ -142,7 +147,7 @@ class SkinTemplateGenerator:
         self.template_mesh = template
         self.template_graph = self._create_graph_representation(template)
         
-        print(f"  Average template created: {len(template.vertices)} vertices")
+        logger.info(f"  Average template created: {len(template.vertices)} vertices")
         
         return template
     
@@ -234,7 +239,7 @@ class SkinTemplateGenerator:
         with open(data_path, 'wb') as f:
             pickle.dump(data, f)
         
-        print(f"Template saved to {path}")
+        logger.info(f"Template saved to {path}")
     
     def load(self, path: str):
         """
@@ -265,7 +270,7 @@ class SkinTemplateGenerator:
             
             self.template_graph = data.get('graph')
         
-        print(f"Template loaded from {path}")
+        logger.info(f"Template loaded from {path}")
     
     def compute_deformation(self,
                           target_mesh: trimesh.Trimesh,
@@ -283,7 +288,7 @@ class SkinTemplateGenerator:
         if self.template_mesh is None:
             raise ValueError("No template mesh available")
         
-        print(f"Computing deformation using {method}...")
+        logger.info(f"Computing deformation using {method}...")
         
         # Normalize target mesh same way as template
         target_normalized = self._normalize_mesh(target_mesh.copy())
@@ -315,13 +320,13 @@ class SkinTemplateGenerator:
                 deformation = reg.TY - self.template_mesh.vertices
                 
             except ImportError:
-                print("  pycpd not available, falling back to nearest neighbor")
+                logger.info("  pycpd not available, falling back to nearest neighbor")
                 return self.compute_deformation(target_mesh, 'nearest_neighbor')
         
         else:
             raise ValueError(f"Unknown method: {method}")
         
-        print(f"  Deformation computed: max={np.max(np.abs(deformation)):.2f}mm")
+        logger.info(f"  Deformation computed: max={np.max(np.abs(deformation)):.2f}mm")
         
         return deformation
     
@@ -437,5 +442,5 @@ class SkinTemplateGenerator:
         # Store
         self.template_mesh = mesh
         self.template_graph = self._create_graph_representation(mesh)
-        print(f"SMPL-X template created: {len(mesh.vertices)} verts, {len(mesh.faces)} faces")
+        logger.info(f"SMPL-X template created: {len(mesh.vertices)} verts, {len(mesh.faces)} faces")
         return mesh

@@ -2,14 +2,19 @@
 Skin mask generation module for ForearmMeshNet
 """
 
+import logging
+from pathlib import Path
+from typing import Optional, Tuple
+
 import numpy as np
 import scipy.ndimage as ndi
 from scipy import ndimage as ndi_mod
-from skimage import morphology, filters, measure
-from typing import Tuple, Optional
-from pathlib import Path
-from ..utils.io_utils import load_nifti, save_nifti
 from scipy.signal import savgol_filter
+from skimage import filters, measure, morphology
+
+from ..utils.io_utils import load_nifti, save_nifti
+
+logger = logging.getLogger(__name__)
 
 class SkinMaskGenerator:
     """
@@ -68,7 +73,7 @@ class SkinMaskGenerator:
         Returns:
             skin_mask: Binary skin mask (Z, Y, X)
         """
-        print("Generating skin mask...")
+        logger.info("Generating skin mask...")
 
         ry_mid, rx_mid, ry_end, rx_end = self._pixel_radii_from_spacing(spacing)
         se_mid = self._elliptical_se(ry_mid, rx_mid)
@@ -90,12 +95,12 @@ class SkinMaskGenerator:
         # Step 4: Ensure 3D consistency
         skin_mask = self._ensure_3d_consistency(skin_mask)
         
-        print(f"Skin mask generated: {skin_mask.sum():,} voxels")
+        logger.info(f"Skin mask generated: {skin_mask.sum():,} voxels")
         return skin_mask
     
     def _fix_ghosting_artifacts(self, mask: np.ndarray) -> np.ndarray:
         """Remove ghosting artifacts from top slices."""
-        print("Fixing ghosting artifacts...")
+        logger.info("Fixing ghosting artifacts...")
         
         mask_fixed = mask.copy()
         Z = mask.shape[0]
@@ -115,7 +120,7 @@ class SkinMaskGenerator:
         if self.max_connected_ghosting_fix is None:
             return mask
             
-        print(f"Fixing connected ghosting (max slice: {self.max_connected_ghosting_fix})...")
+        logger.info(f"Fixing connected ghosting (max slice: {self.max_connected_ghosting_fix})...")
         
         mask_fixed = mask.copy()
         
@@ -139,7 +144,7 @@ class SkinMaskGenerator:
         """
         Create hybrid skin mask using edge detection and morphology.
         """
-        print("Creating hybrid skin mask...")
+        logger.info("Creating hybrid skin mask...")
         
         Z, Y, X = mask.shape
         skin_mask = np.zeros_like(mask, dtype=bool)
@@ -175,7 +180,7 @@ class SkinMaskGenerator:
             # Progress reporting
             if z % 50 == 0:
                 slice_type = "END" if is_end_slice else "MIDDLE"
-                print(f"  Processed slice {z}/{Z} ({slice_type})")
+                logger.info(f"  Processed slice {z}/{Z} ({slice_type})")
                 
         return skin_mask
     
@@ -294,7 +299,7 @@ class SkinMaskGenerator:
                                  skin_mask: np.ndarray,
                                  spacing: np.ndarray) -> np.ndarray:
         """Apply radial smoothing for anatomical consistency."""
-        print("Applying radial smoothing...")
+        logger.info("Applying radial smoothing...")
         
         smooth_mask = skin_mask.copy()
         
@@ -389,7 +394,7 @@ class SkinMaskGenerator:
         
     def _ensure_3d_consistency(self, skin_mask: np.ndarray) -> np.ndarray:
         """Ensure 3D consistency of the mask."""
-        print("Ensuring 3D consistency...")
+        logger.info("Ensuring 3D consistency...")
         
         # 3D morphological operations
         struct3d = ndi.generate_binary_structure(3, 1)
@@ -409,7 +414,7 @@ class SkinMaskGenerator:
             skin_mask.astype(np.float32), sigma=0.6
         ) > 0.5
         
-        print(f"  Final mask: {skin_mask.sum():,} voxels")
+        logger.info(f"  Final mask: {skin_mask.sum():,} voxels")
         
         return skin_mask
     

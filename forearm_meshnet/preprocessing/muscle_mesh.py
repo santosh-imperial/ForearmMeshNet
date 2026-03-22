@@ -3,18 +3,23 @@
 Muscle mesh generation module for ForearmMeshNet
 """
 
-import numpy as np
-import trimesh
-import scipy.ndimage as ndi
-from skimage import measure
-from typing import Dict, Optional, Tuple, List, Any
+import logging
 import os
-import pymeshfix
-import SimpleITK as sitk
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 import open3d as o3d
+import pymeshfix
+import scipy.ndimage as ndi
+import SimpleITK as sitk
+import trimesh
+from skimage import measure
+
 from .mesh_utils import cap_then_polish
+
+logger = logging.getLogger(__name__)
 
 
 # Muscle definitions
@@ -67,9 +72,9 @@ class MuscleMeshGenerator:
         self.target_vertices = self.config.get('target_vertices', 800)
         self.iso_resolution = self.config.get('iso_resolution', 0.5)
         
-        print(f"MuscleMeshGenerator initialized")
-        print(f"  Available muscles: {len(KEEP_MUSCLES)}")
-        print(f"  Min muscle volume: {self.min_muscle_volume} voxels")
+        logger.info("MuscleMeshGenerator initialized")
+        logger.info(f"  Available muscles: {len(KEEP_MUSCLES)}")
+        logger.info(f"  Min muscle volume: {self.min_muscle_volume} voxels")
     
     def generate_all_muscles(self,
                             multi_label_mask: np.ndarray,
@@ -91,9 +96,7 @@ class MuscleMeshGenerator:
             muscle_meshes: Dictionary of muscle_name -> mesh data
             extraction_stats: Statistics about extraction process
         """
-        print(f"\n{'='*60}")
-        print(f"EXTRACTING ALL MUSCLE MESHES FOR SUBJECT {subject_id}")
-        print(f"{'='*60}")
+        logger.info(f"EXTRACTING ALL MUSCLE MESHES FOR SUBJECT {subject_id}")
         
         if output_folder:
             os.makedirs(output_folder, exist_ok=True)
@@ -107,17 +110,17 @@ class MuscleMeshGenerator:
         
         # Check which muscles are present
         unique_labels = np.unique(multi_label_mask)
-        print(f"Available labels in mask: {unique_labels}")
+        logger.info(f"Available labels in mask: {unique_labels}")
         
         # Process each muscle
         for muscle_abbrev, muscle_label in MUSCLE_LABEL_LUT.items():
             if muscle_label not in unique_labels:
-                print(f"  {muscle_abbrev}: not found in segmentation")
+                logger.info(f"  {muscle_abbrev}: not found in segmentation")
                 extraction_stats['failed'].append(muscle_abbrev)
                 continue
             
             muscle_name = MUSCLE_FULL_NAMES.get(muscle_abbrev, muscle_abbrev)
-            print(f"\n  Extracting {muscle_abbrev} ({muscle_name})...")
+            logger.info(f"  Extracting {muscle_abbrev} ({muscle_name})...")
             
             # Resample to isotropic
             vol_iso, mask_iso, sp_iso = self._resample_isotropic(
@@ -151,7 +154,7 @@ class MuscleMeshGenerator:
                         f'subject{subject_id}_muscle_{muscle_abbrev}_{muscle_name}.ply'
                     )
                     mesh.export(mesh_path)
-                    print(f"    Saved: {mesh_path}")
+                    logger.info(f"    Saved: {mesh_path}")
             else:
                 extraction_stats['failed'].append(muscle_abbrev)
         
@@ -167,7 +170,7 @@ class MuscleMeshGenerator:
         """
         Resample volume and mask to isotropic voxels.
         """
-        print(f"\n1. Resampling to isotropic voxels ({self.iso_resolution}mm)...")
+        logger.info(f"1. Resampling to isotropic voxels ({self.iso_resolution}mm)...")
         iso = float(self.iso_resolution)
         zoom = spacing / iso  # axis-wise zoom factors (Z, Y, X)
 
@@ -191,10 +194,10 @@ class MuscleMeshGenerator:
         # Check volume
         muscle_volume = muscle_mask.sum()
         if muscle_volume < self.min_muscle_volume:
-            print(f"    Insufficient volume: {muscle_volume} voxels")
+            logger.info(f"    Insufficient volume: {muscle_volume} voxels")
             return None
         
-        print(f"    Processing {muscle_volume} voxels...")
+        logger.info(f"    Processing {muscle_volume} voxels...")
         
         # Morphological cleanup
         muscle_mask = ndi.binary_fill_holes(muscle_mask)
@@ -233,12 +236,12 @@ class MuscleMeshGenerator:
             # Polish mesh
             mesh = cap_then_polish(mesh, target_vertices=self.target_vertices, smooth_iter=self.smooth_iterations)
             
-            print(f"    Generated mesh: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+            logger.info(f"    Generated mesh: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
             
             return mesh
             
         except Exception as e:
-            print(f"    Mesh extraction failed: {e}")
+            logger.warning(f"    Mesh extraction failed: {e}")
             return None
     
     def _repair_muscle_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -264,7 +267,7 @@ class MuscleMeshGenerator:
             return mesh
             
         except Exception as e:
-            print(f"      Repair failed: {e}")
+            logger.warning(f"      Repair failed: {e}")
             return mesh
     
     
@@ -272,17 +275,15 @@ class MuscleMeshGenerator:
         """
         Print extraction summary.
         """
-        print(f"\n{'='*60}")
-        print(f"EXTRACTION SUMMARY FOR SUBJECT {subject_id}")
-        print(f"{'='*60}")
-        print(f"Successful: {len(stats['successful'])} muscles")
-        print(f"Failed: {len(stats['failed'])} muscles")
-        
+        logger.info(f"EXTRACTION SUMMARY FOR SUBJECT {subject_id}")
+        logger.info(f"Successful: {len(stats['successful'])} muscles")
+        logger.info(f"Failed: {len(stats['failed'])} muscles")
+
         if stats['successful']:
-            print(f"Successfully extracted: {', '.join(stats['successful'])}")
-        
+            logger.info(f"Successfully extracted: {', '.join(stats['successful'])}")
+
         if stats['failed']:
-            print(f"Failed to extract: {', '.join(stats['failed'])}")
+            logger.info(f"Failed to extract: {', '.join(stats['failed'])}")
     
     def load_dicom_volume(self, dicom_folder: str) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -368,7 +369,7 @@ class MuscleMeshGenerator:
                     multi_label_mask[slice_idx, rr, cc] = muscle_label
                     
             except Exception as e:
-                print(f"    Error processing {roi_file}: {e}")
+                logger.warning(f"    Error processing {roi_file}: {e}")
                 continue
         
         return multi_label_mask

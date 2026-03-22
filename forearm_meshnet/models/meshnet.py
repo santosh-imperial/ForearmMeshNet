@@ -154,9 +154,13 @@ class ForearmMeshNet(nn.Module):
         # Process anthropometric features
         anthro_processed = self.anthro_processor(anthro_features)
 
-        # Template augmentation 
+        # Template augmentation (anthro_processed not used — TemplateAugmentor applies random spatial transforms)
         if self.training and self.use_template_augmentation:
-             graph_batch = self.template_augmentor.augment_template_graph(graph_batch, anthro_processed)
+            pos = graph_batch.pos  # [B*V, 3]
+            n_nodes = pos.shape[0] // batch_size
+            pos_3d = pos.view(batch_size, n_nodes, 3)
+            pos_3d = self.template_augmentor(pos_3d, training=True)
+            graph_batch.pos = pos_3d.view(-1, 3)
 
         
         # Encode graph to latent space
@@ -200,22 +204,21 @@ class ForearmMeshNet(nn.Module):
         
         # Apply affine transformation if enabled
         affine_params = None
+        affine_vertices = None
         if self.use_affine and template_vertices is not None:
             scale, translation = self.affine(anthro_processed)
             affine_params = {'scale': scale, 'translation': translation}
-            
-            # Apply affine to template and adjust deformations
+
+            # Apply affine to each template structure and collect results
+            affine_vertices = {}
             for struct_name in structure_deformations.keys():
                 if struct_name in template_vertices:
-                    # Apply affine to template
-                    affine_template = self.affine.apply_transform(
+                    affine_vertices[struct_name] = self.affine.apply_transform(
                         template_vertices[struct_name],
                         scale,
                         translation
                     )
-                    # Deformations are relative to affine-transformed template
-                            
-        
+
         # Return all outputs
         outputs = {
             'structure_deformations': structure_deformations,
@@ -228,7 +231,9 @@ class ForearmMeshNet(nn.Module):
         
         if affine_params is not None:
             outputs['affine_params'] = affine_params
-        
+        if affine_vertices is not None:
+            outputs['affine_vertices'] = affine_vertices
+
         return outputs
     
     def sample(self,

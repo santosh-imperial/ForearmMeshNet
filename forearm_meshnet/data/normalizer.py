@@ -2,13 +2,17 @@
 Data normalization module for ForearmMeshNet
 """
 
+import logging
+import os
+import pickle
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 import torch
-import pickle
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from typing import Dict, List, Optional, Tuple, Any
-import os
-from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+
+logger = logging.getLogger(__name__)
 
 
 def _to_numpy(x) -> np.ndarray:
@@ -36,6 +40,7 @@ class DataNormalizer:
             graph_fit_mode: 'samplemean' or 'nodewise'
         """
         self.normalization_method = normalization_method
+        self.graph_fit_mode = graph_fit_mode
         self.anthropometric_scaler: Optional[Any] = None
         self.deformation_scaler: Optional[Any] = None   # Overall (combined) deformation scaler
         self.graph_feature_scaler: Optional[Any] = None
@@ -69,9 +74,7 @@ class DataNormalizer:
         Returns:
             List of normalized training samples
         """
-        print("\n" + "="*60)
-        print("DATA NORMALIZATION")
-        print("="*60)
+        logger.info("DATA NORMALIZATION")
         
         # Step 1: Collect all data for fitting
         anthro_data, deformation_data, graph_data = self._collect_training_data(training_samples)
@@ -92,14 +95,14 @@ class DataNormalizer:
         if save_path:
             self.save(save_path)
         
-        print(f"\n NORMALIZATION COMPLETE")
-        print(f"  Normalized {len(normalized_samples)} samples")
-        print(f"  Method: {self.normalization_method}")
+        logger.info("NORMALIZATION COMPLETE")
+        logger.info(f"  Normalized {len(normalized_samples)} samples")
+        logger.info(f"  Method: {self.normalization_method}")
         
         return normalized_samples
     
     def _collect_training_data(self, training_samples):
-        print("\n1. Collecting data for normalization...")
+        logger.info("1. Collecting data for normalization...")
 
         # 1) Anthropometrics
         anthro_data = []
@@ -147,9 +150,9 @@ class DataNormalizer:
         else:
             graph_data = np.vstack(graph_rows)
 
-        print(f"  Anthropometric data: {anthro_data.shape}")
-        print(f"  Deformation data (combined): {deformation_data.shape}")
-        print(f"  Graph node feature rows: {graph_data.shape}")
+        logger.info(f"  Anthropometric data: {anthro_data.shape}")
+        logger.info(f"  Deformation data (combined): {deformation_data.shape}")
+        logger.info(f"  Graph node feature rows: {graph_data.shape}")
 
         return anthro_data, deformation_data, graph_data
     
@@ -160,7 +163,7 @@ class DataNormalizer:
         """
         Fit normalizers on collected data.
         """
-        print("\n2. Fitting normalizers...")
+        logger.info("2. Fitting normalizers...")
         # choose scalers
         Scaler = StandardScaler if self.normalization_method == 'standard' else MinMaxScaler
         self.anthropometric_scaler = Scaler()
@@ -182,15 +185,15 @@ class DataNormalizer:
         self.statistics['anthro_mean'] = np.mean(anthro_data, axis=0)
         self.statistics['anthro_std']  = np.std(anthro_data, axis=0)
         if deformation_data.size:
-            print(f"  Deformation: mean={deformation_data.mean():.3f}, std={deformation_data.std():.3f}")
+            logger.info(f"  Deformation: mean={deformation_data.mean():.3f}, std={deformation_data.std():.3f}")
         else:
-            print("  Deformation: (none)")
+            logger.info("  Deformation: (none)")
         if graph_data.size:
             self.statistics['graph_mean'] = graph_data.mean(axis=0)
             self.statistics['graph_std']  = graph_data.std(axis=0)
-            print(f"  Graph features: mean={graph_data.mean():.3f}, std={graph_data.std():.3f}")
+            logger.info(f"  Graph features: mean={graph_data.mean():.3f}, std={graph_data.std():.3f}")
         else:
-            print("  Graph features: (none)")
+            logger.info("  Graph features: (none)")
 
         self.fitted = True
     
@@ -198,7 +201,7 @@ class DataNormalizer:
         """
         Fit separate normalizers for each structure.
         """
-        print("\n3. Fitting structure-specific normalizers...")
+        logger.info("3. Fitting structure-specific normalizers...")
         
         # Collect deformations by structure (excluding 'combined')
         structure_deformations: Dict[str, List[np.ndarray]] = {}
@@ -226,14 +229,14 @@ class DataNormalizer:
                 'shape': deform_array.shape
             }
             
-            print(f"  {structure_name}: shape={deform_array.shape}, "
+            logger.info(f"  {structure_name}: shape={deform_array.shape}, "
                   f"mean={np.mean(deform_array):.3f}, std={np.std(deform_array):.3f}")
     
     def _transform_samples(self, training_samples: List[Dict]) -> List[Dict]:
         """
         Transform all samples using fitted normalizers.
         """
-        print("\n4. Transforming samples...")
+        logger.info("4. Transforming samples...")
         normalized = []
 
         for i, s in enumerate(training_samples):
@@ -287,7 +290,7 @@ class DataNormalizer:
 
             normalized.append(out)
             if (i + 1) % 10 == 0:
-                print(f"  Processed {i + 1}/{len(training_samples)} samples")
+                logger.info(f"  Processed {i + 1}/{len(training_samples)} samples")
 
         return normalized
     
@@ -295,19 +298,19 @@ class DataNormalizer:
         """
         Validate that normalization was successful.
         """
-        print("\n5. Validating normalization...")
+        logger.info("5. Validating normalization...")
         
         # Check anthropometric features
         anthro_values = np.vstack([_to_numpy(s['anthropometric_features']).reshape(1, -1)
                                    for s in normalized_samples])
         a_mean = float(np.mean(anthro_values)) if anthro_values.size else float('nan')
         a_std  = float(np.std(anthro_values)) if anthro_values.size else float('nan')
-        print(f"  Normalized anthropometric: mean={a_mean:.3f}, std={a_std:.3f}")
-        
+        logger.info(f"  Normalized anthropometric: mean={a_mean:.3f}, std={a_std:.3f}")
+
         if self.normalization_method == 'standard' and anthro_values.size:
             ok = (abs(a_mean) < 0.1 and abs(a_std - 1.0) < 0.1)
-            print(" Anthropometric normalization successful" if ok
-                  else " Anthropometric normalization may have issues")
+            logger.info("Anthropometric normalization successful" if ok
+                  else "Anthropometric normalization may have issues")
         
         # Check structure deformations (only where per-structure scalers exist)
         for structure_name, scaler in self.structure_deformation_scalers.items():
@@ -318,7 +321,7 @@ class DataNormalizer:
                     struct_values.append(_to_numpy(d).flatten())
             if struct_values:
                 arr = np.concatenate(struct_values)
-                print(f"  {structure_name}: mean={np.mean(arr):.3f}, std={np.std(arr):.3f}")
+                logger.info(f"  {structure_name}: mean={np.mean(arr):.3f}, std={np.std(arr):.3f}")
     
     def normalize_for_inference(self,
                                anthropometric_features: np.ndarray,
@@ -378,7 +381,9 @@ class DataNormalizer:
                         flat_pad = np.pad(flat, (0, exp - flat.size), mode='constant')
                     else:
                         flat_pad = flat[:exp]
-                inv = scaler.inverse_transform(flat_pad.reshape(1, -1)).reshape(-1)[:flat.size]
+                else:
+                    flat_pad = flat
+                inv = self.deformation_scaler.inverse_transform(flat_pad.reshape(1, -1)).reshape(-1)[:flat.size]
                 out[name] = inv.reshape(arr.shape)
                 continue
             scaler = self.structure_deformation_scalers.get(name)
@@ -428,7 +433,7 @@ class DataNormalizer:
         with open(save_path, 'wb') as f:
             pickle.dump(normalizer_data, f)
         
-        print(f"  Normalizers saved to: {save_path}")
+        logger.info(f"  Normalizers saved to: {save_path}")
     
     def load(self, load_path: str):
         """
@@ -449,7 +454,7 @@ class DataNormalizer:
         self.max_deformation_size = normalizer_data.get('max_deformation_size', 0)
         self.statistics = normalizer_data.get('statistics', {})
         
-        print(f"  Normalizers loaded from: {load_path}")
+        logger.info(f"  Normalizers loaded from: {load_path}")
     
     def transform(self, samples: List[Dict]) -> List[Dict]:
         """

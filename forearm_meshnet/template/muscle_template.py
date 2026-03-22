@@ -3,13 +3,17 @@
 Muscle template generation module for ForearmMeshNet
 """
 
-import numpy as np
-import trimesh
-from typing import Dict, List, Optional, Tuple
-from pathlib import Path
+import logging
 import pickle
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 import open3d as o3d
+import trimesh
 from sklearn.decomposition import PCA
+
+logger = logging.getLogger(__name__)
 
 # Muscle definitions
 MUSCLE_NAMES = {
@@ -171,7 +175,7 @@ class MuscleTemplateGenerator:
         with open(path, 'wb') as f:
             pickle.dump(data, f)
         
-        print(f"Muscle templates saved to {path}")
+        logger.info(f"Muscle templates saved to {path}")
     
     def load(self, path: str):
         """
@@ -193,7 +197,7 @@ class MuscleTemplateGenerator:
                 process=False
             )
         
-        print(f"Loaded {len(self.muscle_templates)} muscle templates from {path}")
+        logger.info(f"Loaded {len(self.muscle_templates)} muscle templates from {path}")
 
     def _analyze_muscle_availability(self, muscle_data: Dict) -> Dict[str, float]:
         muscle_counts = {m: 0 for m in MUSCLE_NAMES.keys()}

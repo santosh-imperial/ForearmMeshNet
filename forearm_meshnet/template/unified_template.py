@@ -3,13 +3,17 @@
 Unified multi-structure template generation module for ForearmMeshNet
 """
 
-import numpy as np
-import trimesh
-import torch
-from torch_geometric.data import Data
-from typing import Dict, List, Optional, Tuple
-from pathlib import Path
+import logging
 import pickle
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
+import trimesh
+from torch_geometric.data import Data
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedTemplateGenerator:
@@ -46,7 +50,7 @@ class UnifiedTemplateGenerator:
             Unified template mesh
         """
         
-        print("CREATING UNIFIED MULTI-STRUCTURE TEMPLATE")
+        logger.info("CREATING UNIFIED MULTI-STRUCTURE TEMPLATE")
         
         # reset structure info for a fresh build
         self.structure_info = {}
@@ -64,7 +68,7 @@ class UnifiedTemplateGenerator:
 
         
         # Process skin template
-        print("\nProcessing skin template...")
+        logger.info("Processing skin template...")
         self.skin_template = self._process_template(
             skin_t, 
             skin_vertices,
@@ -72,11 +76,11 @@ class UnifiedTemplateGenerator:
         )
         
         # Process muscle templates
-        print(f"\nProcessing {len(muscle_templates)} muscle templates...")
+        logger.info(f"Processing {len(muscle_templates)} muscle templates...")
         self.muscle_templates = {}
         
         for muscle_name, muscle_mesh in muscles_t.items():
-            print(f"  Processing {muscle_name}...")
+            logger.info(f"  Processing {muscle_name}...")
             processed = self._process_template(
                 muscle_mesh.copy(),
                 muscle_vertices,
@@ -85,17 +89,17 @@ class UnifiedTemplateGenerator:
             self.muscle_templates[muscle_name] = processed
         
         # Combine into unified mesh
-        print("\nCombining structures into unified template...")
+        logger.info("Combining structures into unified template...")
         self.unified_mesh = self._combine_structures()
         
         # Create graph representation
-        print("Creating unified graph representation...")
+        logger.info("Creating unified graph representation...")
         self.unified_graph = self._create_unified_graph()
         
-        print(f"\nUnified template created:")
-        print(f"  Total vertices: {len(self.unified_mesh.vertices):,}")
-        print(f"  Total faces: {len(self.unified_mesh.faces):,}")
-        print(f"  Structures: {len(self.structure_info)}")
+        logger.info("Unified template created:")
+        logger.info(f"  Total vertices: {len(self.unified_mesh.vertices):,}")
+        logger.info(f"  Total faces: {len(self.unified_mesh.faces):,}")
+        logger.info(f"  Structures: {len(self.structure_info)}")
         
         return self.unified_mesh
     
@@ -125,7 +129,7 @@ class UnifiedTemplateGenerator:
         mesh.remove_unreferenced_vertices()
         mesh.remove_degenerate_faces()
         
-        print(f"    {structure_name}: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+        logger.info(f"    {structure_name}: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
         
         return mesh
     
@@ -260,7 +264,7 @@ class UnifiedTemplateGenerator:
         with open(data_path, 'wb') as f:
             pickle.dump(data, f)
         
-        print(f"Unified template saved to {path}")
+        logger.info(f"Unified template saved to {path}")
     
     def load(self, path: str):
         """
@@ -300,8 +304,8 @@ class UnifiedTemplateGenerator:
                 if structure_name != 'skin':
                     self.muscle_templates[structure_name] = self.get_structure_mesh(structure_name)
         
-        print(f"Unified template loaded from {path}")
-        print(f"  Structures: {list(self.structure_info.keys())}")
+        logger.info(f"Unified template loaded from {path}")
+        logger.info(f"  Structures: {list(self.structure_info.keys())}")
     
     def compute_structure_deformations(self,
                                       target_skin: trimesh.Trimesh,

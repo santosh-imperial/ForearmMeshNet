@@ -3,18 +3,23 @@
 Training data preparation module for ForearmMeshNet
 """
 
-import numpy as np
-import torch
+import logging
 import pickle
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-import pandas as pd
-from scipy.spatial import cKDTree
-from torch_geometric.data import Data
-import trimesh
 from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+import torch
+import trimesh
+from scipy.spatial import cKDTree
 from sklearn.decomposition import PCA
+from torch_geometric.data import Data
+
 from ..utils.mesh_operations import rigid_icp, similarity_icp
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -50,12 +55,12 @@ class TrainingDataPreparation:
         self.subject_measurements_path = Path(subject_measurements_path) if subject_measurements_path else None
         
         # Load unified template
-        print("Loading unified template system...")
+        logger.info("Loading unified template system...")
         self._load_unified_template()
         
         # Load muscle GT data if available
         if self.muscle_gt_data_path and self.muscle_gt_data_path.exists():
-            print("Loading muscle ground truth data...")
+            logger.info("Loading muscle ground truth data...")
             with open(self.muscle_gt_data_path, 'rb') as f:
                 self.muscle_gt_data = pickle.load(f)
         else:
@@ -63,7 +68,7 @@ class TrainingDataPreparation:
         
         # Load subject measurements if available
         if self.subject_measurements_path and self.subject_measurements_path.exists():
-            print("Loading subject measurements...")
+            logger.info("Loading subject measurements...")
             self.subject_measurements = pd.read_csv(self.subject_measurements_path, index_col='subject_id')
         else:
             self.subject_measurements = None
@@ -73,9 +78,9 @@ class TrainingDataPreparation:
         self.anthro_extractor = AnthropometricExtractor()
         self.graph_extractor = GraphFeatureExtractor()
         
-        print("\nTraining data preparation initialized")
-        print(f"  Template vertices: {len(self.unified_mesh.vertices)}")
-        print(f"  Structures: {len(self.structure_info)}")
+        logger.info("Training data preparation initialized")
+        logger.info(f"  Template vertices: {len(self.unified_mesh.vertices)}")
+        logger.info(f"  Structures: {len(self.structure_info)}")
     
     def _load_unified_template(self):
         """Load unified template system."""
@@ -162,9 +167,7 @@ class TrainingDataPreparation:
             training_samples: List of training samples
             statistics: Dataset statistics
         """
-        print("\n" + "="*60)
-        print("PREPARING TRAINING DATASET")
-        print("="*60)
+        logger.info("PREPARING TRAINING DATASET")
         
         output_path = Path(output_folder)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -174,7 +177,7 @@ class TrainingDataPreparation:
         if not skin_mesh_files:
             skin_mesh_files = sorted(self.skin_gt_folder.glob("*.obj"))
         
-        print(f"\nFound {len(skin_mesh_files)} skin ground truth meshes")
+        logger.info(f"Found {len(skin_mesh_files)} skin ground truth meshes")
         
         if max_subjects:
             skin_mesh_files = skin_mesh_files[:max_subjects]
@@ -187,7 +190,7 @@ class TrainingDataPreparation:
             # Extract subject ID from filename
             subject_id = self._extract_subject_id(mesh_file.name)
             
-            print(f"\nProcessing {subject_id}...")
+            logger.info(f"Processing {subject_id}...")
             
             try:
                 # Process single subject
@@ -206,7 +209,7 @@ class TrainingDataPreparation:
                     )
                     
             except Exception as e:
-                print(f"  Error processing {subject_id}: {e}")
+                logger.warning(f"  Error processing {subject_id}: {e}")
                 statistics['failed_subjects'].append(subject_id)
         
         # Calculate summary statistics
@@ -215,11 +218,9 @@ class TrainingDataPreparation:
         # Save dataset
         self._save_dataset(training_samples, summary_stats, output_path)
         
-        print("\n" + "="*60)
-        print("DATASET PREPARATION COMPLETE")
-        print("="*60)
-        print(f"Total samples: {len(training_samples)}")
-        print(f"Failed subjects: {len(statistics.get('failed_subjects', []))}")
+        logger.info("DATASET PREPARATION COMPLETE")
+        logger.info(f"Total samples: {len(training_samples)}")
+        logger.info(f"Failed subjects: {len(statistics.get('failed_subjects', []))}")
         
         return training_samples, summary_stats
     
@@ -256,7 +257,7 @@ class TrainingDataPreparation:
         """
         # Load skin GT mesh
         skin_gt_mesh = trimesh.load(str(skin_mesh_file))
-        print(f"  Skin mesh: {len(skin_gt_mesh.vertices)} vertices")
+        logger.info(f"  Skin mesh: {len(skin_gt_mesh.vertices)} vertices")
         
         # Extract anthropometric features
         anthro_data = self.anthro_extractor.extract_from_mesh(skin_gt_mesh)
@@ -336,7 +337,7 @@ class TrainingDataPreparation:
             }
         }
         
-        print(f"  Sample created with {len(structure_deformations)} structures")
+        logger.info(f"  Sample created with {len(structure_deformations)} structures")
         
         return sample
     
@@ -400,7 +401,7 @@ class TrainingDataPreparation:
                     else:
                         d_fix = d[:expected]
                     combined[v_start:v_end] = d_fix
-                    print(f"    Warning: Deformation size mismatch for {structure_name} "
+                    logger.warning(f"    Deformation size mismatch for {structure_name} "
                         f"({d.shape[0]} vs {expected}); padded/truncated.")
         return combined
         
@@ -477,13 +478,13 @@ class TrainingDataPreparation:
         dataset_path = output_path / 'training_dataset.pkl'
         with open(dataset_path, 'wb') as f:
             pickle.dump(training_samples, f)
-        print(f"\nDataset saved to: {dataset_path}")
+        logger.info(f"Dataset saved to: {dataset_path}")
         
         # Save statistics
         stats_path = output_path / 'dataset_statistics.pkl'
         with open(stats_path, 'wb') as f:
             pickle.dump(statistics, f)
-        print(f"Statistics saved to: {stats_path}")
+        logger.info(f"Statistics saved to: {stats_path}")
         
         # Save human-readable summary
         summary_path = output_path / 'dataset_summary.txt'
@@ -510,7 +511,7 @@ class TrainingDataPreparation:
                     for key, value in stats.items():
                         f.write(f"    {key}: {value:.4f}\n")
         
-        print(f"Summary saved to: {summary_path}")
+        logger.info(f"Summary saved to: {summary_path}")
     
     def create_train_val_split(self,
                              training_samples: List[Dict],
@@ -545,8 +546,8 @@ class TrainingDataPreparation:
             else:
                 train_samples.append(sample)
         
-        print(f"\nTrain/Val Split:")
-        print(f"  Training: {len(train_samples)} samples")
-        print(f"  Validation: {len(val_samples)} samples")
+        logger.info("Train/Val Split:")
+        logger.info(f"  Training: {len(train_samples)} samples")
+        logger.info(f"  Validation: {len(val_samples)} samples")
         
         return train_samples, val_samples

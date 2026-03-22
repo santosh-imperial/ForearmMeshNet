@@ -5,6 +5,7 @@ This script demonstrates how to use the implemented functionalities:
 3. Generate individual muscle meshes
 """
 
+import copy
 import numpy as np
 from pathlib import Path
 import SimpleITK as sitk
@@ -16,6 +17,7 @@ from forearm_meshnet.preprocessing import (
     SkinMeshGenerator,
     MuscleMeshGenerator
 )
+from forearm_meshnet.config import DEFAULT_CONFIG
 
 
 class ForearmMeshNetPipeline:
@@ -30,7 +32,7 @@ class ForearmMeshNetPipeline:
         Args:
             config: Configuration dictionary
         """
-        self.config = config or self._get_default_config()
+        self.config = config or copy.deepcopy(DEFAULT_CONFIG)
         
         # Initialize generators
         self.skin_mask_generator = SkinMaskGenerator(self.config.get('skin_mask', {}))
@@ -38,30 +40,6 @@ class ForearmMeshNetPipeline:
         
         print("ForearmMeshNet Pipeline initialized")
         print("="*60)
-    
-    def _get_default_config(self) -> Dict:
-        """Get default configuration."""
-        return {
-            'skin_mask': {
-                'end_slice_fraction': 0.25,
-                'fix_ghosting': True,
-                'fix_connected_ghosting': True,
-                'max_connected_ghosting_fix': 14,
-            },
-            'skin_mesh': {
-                'iso_resolution': 0.5,
-                'sdf_blur_sigma': 1.5,
-                'target_faces': 50000,
-                'smooth_iterations': 50,
-                'max_edge_length': 15.0,
-            },
-            'muscle_mesh': {
-                'min_muscle_volume': 100,
-                'smooth_iterations': 15,
-                'target_vertices': 800,
-                'iso_resolution': 0.5,
-            }
-        }
     
     def load_mri_data(self, dicom_folder: str) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -155,11 +133,7 @@ class ForearmMeshNetPipeline:
             spacing,
             output_path=str(skin_mesh_path)
         )
-        # skin mesh (choose one)
-        # Basic (decimate+polish)
-        #skin_mesh = self.skin_mesh_generator.generate(skin_mask, volume, spacing, output_path=str(skin_mesh_path))
-        # Robust (conservative repair; comment the line above and uncomment below)
-        # skin_mesh = self.skin_mesh_generator.generate_robust(skin_mask, volume, spacing, output_path=str(skin_mesh_path))
+        # skin mesh
         
         results['skin_mesh'] = {
             'mesh': skin_mesh,

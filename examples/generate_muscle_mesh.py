@@ -2,6 +2,9 @@
 Example script for using the muscle mesh generation functionality
 """
 
+import numpy as np
+
+
 def example_muscle_mesh_generation():
     """
     Example of generating muscle meshes from MRI data.
